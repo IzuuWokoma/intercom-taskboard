@@ -238,3 +238,27 @@ export async function claimEscrowTx({
   tx.sign(recipient);
   return { tx, escrowPda, vault };
 }
+
+export async function refundEscrowTx({
+  connection,
+  refund,
+  refundTokenAccount,
+  mint,
+  paymentHashHex,
+  programId = LN_USDT_ESCROW_PROGRAM_ID,
+}) {
+  const { pda: escrowPda } = deriveEscrowPda(paymentHashHex, programId);
+  const vault = await deriveVaultAta(escrowPda, mint);
+  const refundIxFactory = buildRefundInstruction({
+    paymentHashHex,
+    refund: refund.publicKey,
+    refundTokenAccount,
+    programId,
+  });
+  const tx = new Transaction().add(refundIxFactory(vault));
+  tx.feePayer = refund.publicKey;
+  const latest = await connection.getLatestBlockhash('confirmed');
+  tx.recentBlockhash = latest.blockhash;
+  tx.sign(refund);
+  return { tx, escrowPda, vault };
+}

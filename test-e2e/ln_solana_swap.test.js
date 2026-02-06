@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,6 +22,7 @@ import {
   createEscrowTx,
   deriveEscrowPda,
   getEscrowState,
+  refundEscrowTx,
 } from '../src/solana/lnUsdtEscrowClient.js';
 
 const execFileP = promisify(execFile);
@@ -149,7 +151,16 @@ async function startSolanaValidator({ soPath }) {
   };
 }
 
-test('e2e: LN preimage claims Solana USDT escrow', async (t) => {
+async function sendAndConfirm(connection, tx) {
+  const sig = await connection.sendRawTransaction(tx.serialize());
+  const conf = await connection.confirmTransaction(sig, 'confirmed');
+  if (conf?.value?.err) {
+    throw new Error(`Tx failed: ${JSON.stringify(conf.value.err)}`);
+  }
+  return sig;
+}
+
+test('e2e: LN<->Solana escrow flows', async (t) => {
   // Ensure our SBF program is built.
   await sh('cargo', ['build-sbf'], { cwd: path.join(repoRoot, 'solana/ln_usdt_escrow') });
   const soPath = path.join(repoRoot, 'solana/ln_usdt_escrow/target/deploy/ln_usdt_escrow.so');
@@ -241,7 +252,8 @@ test('e2e: LN preimage claims Solana USDT escrow', async (t) => {
   const mint = await createMint(connection, solAlice, solAlice.publicKey, null, 6);
   const aliceToken = await createAssociatedTokenAccount(connection, solAlice, mint, solAlice.publicKey);
   const bobToken = await createAssociatedTokenAccount(connection, solAlice, mint, solBob.publicKey);
-  await mintTo(connection, solAlice, mint, aliceToken, solAlice, 100_000_000n); // 100 USDT (6 decimals)
+  // Mint enough for multiple escrows across subtests.
+  await mintTo(connection, solAlice, mint, aliceToken, solAlice, 200_000_000n); // 200 USDT (6 decimals)
 
   // Create escrow keyed to LN payment_hash.
   const now = Math.floor(Date.now() / 1000);
@@ -257,8 +269,7 @@ test('e2e: LN preimage claims Solana USDT escrow', async (t) => {
     refundAfterUnix: refundAfter,
     amount: 100_000_000n,
   });
-  const sig1 = await connection.sendRawTransaction(escrowTx.serialize());
-  await connection.confirmTransaction(sig1, 'confirmed');
+  await sendAndConfirm(connection, escrowTx);
 
   const state = await getEscrowState(connection, paymentHashHex);
   assert.ok(state, 'escrow state exists');
@@ -281,8 +292,7 @@ test('e2e: LN preimage claims Solana USDT escrow', async (t) => {
     paymentHashHex,
     preimageHex,
   });
-  const sig2 = await connection.sendRawTransaction(claimTx.serialize());
-  await connection.confirmTransaction(sig2, 'confirmed');
+  await sendAndConfirm(connection, claimTx);
 
   const bobAcc = await getAccount(connection, bobToken, 'confirmed');
   assert.equal(bobAcc.amount, 100_000_000n);
@@ -291,4 +301,151 @@ test('e2e: LN preimage claims Solana USDT escrow', async (t) => {
   assert.ok(afterState, 'escrow state still exists');
   assert.equal(afterState.status, 1, 'escrow claimed');
   assert.equal(afterState.amount, 0n, 'escrow drained');
+
+  await t.test('refund path: escrow refunds after timeout', async () => {
+    const invoice2 = await clnCli('cln-alice', ['invoice', '100000msat', 'swap2', 'swap refund']);
+    const paymentHash2 = parseHex32(invoice2.payment_hash, 'payment_hash');
+
+    const now2 = Math.floor(Date.now() / 1000);
+    const refundAfter2 = now2 + 3;
+
+    const { tx: escrowTx2 } = await createEscrowTx({
+      connection,
+      payer: solAlice,
+      payerTokenAccount: aliceToken,
+      mint,
+      paymentHashHex: paymentHash2,
+      recipient: solBob.publicKey,
+      refund: solAlice.publicKey,
+      refundAfterUnix: refundAfter2,
+      amount: 1_000_000n,
+    });
+    await sendAndConfirm(connection, escrowTx2);
+
+    // Wait for timeout and refund.
+    await new Promise((r) => setTimeout(r, 4000));
+
+    const { tx: refundTx2 } = await refundEscrowTx({
+      connection,
+      refund: solAlice,
+      refundTokenAccount: aliceToken,
+      mint,
+      paymentHashHex: paymentHash2,
+    });
+    await sendAndConfirm(connection, refundTx2);
+
+    const st2 = await getEscrowState(connection, paymentHash2);
+    assert.ok(st2, 'escrow state exists');
+    assert.equal(st2.status, 2, 'escrow refunded');
+    assert.equal(st2.amount, 0n, 'escrow drained');
+  });
+
+  await t.test('negative: wrong preimage cannot claim', async () => {
+    const invoice3 = await clnCli('cln-alice', ['invoice', '100000msat', 'swap3', 'swap wrong preimage']);
+    const paymentHash3 = parseHex32(invoice3.payment_hash, 'payment_hash');
+    const bolt113 = invoice3.bolt11;
+
+    const now3 = Math.floor(Date.now() / 1000);
+    const refundAfter3 = now3 + 3600;
+
+    const { tx: escrowTx3 } = await createEscrowTx({
+      connection,
+      payer: solAlice,
+      payerTokenAccount: aliceToken,
+      mint,
+      paymentHashHex: paymentHash3,
+      recipient: solBob.publicKey,
+      refund: solAlice.publicKey,
+      refundAfterUnix: refundAfter3,
+      amount: 1_000_000n,
+    });
+    await sendAndConfirm(connection, escrowTx3);
+
+    // Bob pays invoice to obtain the real preimage, but attempts to claim with a wrong one.
+    const payRes3 = await clnCli('cln-bob', ['pay', bolt113]);
+    const realPreimage3 = parseHex32(payRes3.payment_preimage, 'payment_preimage');
+    const wrongPreimage = crypto.randomBytes(32).toString('hex');
+
+    const { tx: badClaimTx } = await claimEscrowTx({
+      connection,
+      recipient: solBob,
+      recipientTokenAccount: bobToken,
+      mint,
+      paymentHashHex: paymentHash3,
+      preimageHex: wrongPreimage,
+    });
+
+    let threw = false;
+    try {
+      await sendAndConfirm(connection, badClaimTx);
+    } catch (_e) {
+      threw = true;
+    }
+    assert.equal(threw, true, 'expected claim with wrong preimage to fail');
+
+    // Clean up by claiming with the real preimage.
+    const before = (await getAccount(connection, bobToken, 'confirmed')).amount;
+    const { tx: goodClaimTx } = await claimEscrowTx({
+      connection,
+      recipient: solBob,
+      recipientTokenAccount: bobToken,
+      mint,
+      paymentHashHex: paymentHash3,
+      preimageHex: realPreimage3,
+    });
+    await sendAndConfirm(connection, goodClaimTx);
+    const after = (await getAccount(connection, bobToken, 'confirmed')).amount;
+    assert.equal(after - before, 1_000_000n);
+  });
+
+  await t.test('negative: refund too early fails', async () => {
+    const invoice4 = await clnCli('cln-alice', ['invoice', '100000msat', 'swap4', 'swap early refund']);
+    const paymentHash4 = parseHex32(invoice4.payment_hash, 'payment_hash');
+
+    const now4 = Math.floor(Date.now() / 1000);
+    const refundAfter4 = now4 + 3;
+
+    const { tx: escrowTx4 } = await createEscrowTx({
+      connection,
+      payer: solAlice,
+      payerTokenAccount: aliceToken,
+      mint,
+      paymentHashHex: paymentHash4,
+      recipient: solBob.publicKey,
+      refund: solAlice.publicKey,
+      refundAfterUnix: refundAfter4,
+      amount: 1_000_000n,
+    });
+    await sendAndConfirm(connection, escrowTx4);
+
+    const { tx: refundTx4 } = await refundEscrowTx({
+      connection,
+      refund: solAlice,
+      refundTokenAccount: aliceToken,
+      mint,
+      paymentHashHex: paymentHash4,
+    });
+
+    let threw = false;
+    try {
+      await sendAndConfirm(connection, refundTx4);
+    } catch (_e) {
+      threw = true;
+    }
+    assert.equal(threw, true, 'expected early refund to fail');
+
+    // Then refund succeeds after timeout (and cleans up the escrow).
+    await new Promise((r) => setTimeout(r, 4000));
+    const { tx: refundTx4b } = await refundEscrowTx({
+      connection,
+      refund: solAlice,
+      refundTokenAccount: aliceToken,
+      mint,
+      paymentHashHex: paymentHash4,
+    });
+    await sendAndConfirm(connection, refundTx4b);
+    const st4 = await getEscrowState(connection, paymentHash4);
+    assert.ok(st4, 'escrow state exists');
+    assert.equal(st4.status, 2, 'escrow refunded');
+  });
 });
