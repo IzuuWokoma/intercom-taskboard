@@ -1,4 +1,4 @@
-# Intercom Swap (Fork)
+# Intercom Swap
 
 This repo is a fork of upstream **Intercom** and adds a non-custodial swap harness:
 
@@ -11,7 +11,7 @@ Links:
 
 ---
 
-## What Intercom Is (Upstream)
+## What Intercom Is
 
 Intercom is a Trac stack for autonomous agents:
 - **Sidechannels**: fast, ephemeral P2P messaging (Hyperswarm + Noise).
