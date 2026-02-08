@@ -144,6 +144,77 @@ export const INTERCOMSWAP_TOOLS = [
     required: ['channel', 'json'],
   }),
 
+  // Peer lifecycle (local pear run supervisor; does not grant shell access).
+  tool('intercomswap_peer_status', 'List local peer instances started via prompt tools (reads onchain/peers).', {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      name: { type: 'string', minLength: 1, maxLength: 64, description: 'Optional peer instance id.' },
+    },
+    required: [],
+  }),
+  tool('intercomswap_peer_start', 'Start a local peer instance (detached pear run process).', {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      name: { type: 'string', minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9._-]+$' },
+      store: { type: 'string', minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9._-]+$' },
+      sc_port: { type: 'integer', minimum: 1, maximum: 65535 },
+      sidechannels: { type: 'array', minItems: 0, maxItems: 50, items: channelParam, description: 'Extra sidechannels to join on startup.' },
+      inviter_keys: { type: 'array', minItems: 0, maxItems: 25, items: hex32Param, description: 'Trusted inviter peer pubkeys (hex32).' },
+      dht_bootstrap: {
+        type: 'array',
+        minItems: 0,
+        maxItems: 25,
+        items: { type: 'string', minLength: 3, maxLength: 200, pattern: '^[^\\s]+$' },
+        description: 'Optional HyperDHT bootstrap nodes (host:port or ip@host:port).',
+      },
+      msb_dht_bootstrap: {
+        type: 'array',
+        minItems: 0,
+        maxItems: 25,
+        items: { type: 'string', minLength: 3, maxLength: 200, pattern: '^[^\\s]+$' },
+        description: 'Optional MSB HyperDHT bootstrap nodes (host:port or ip@host:port).',
+      },
+      subnet_channel: { type: 'string', minLength: 1, maxLength: 200, pattern: '^[^\\s]+$' },
+      msb_enabled: { type: 'boolean' },
+      price_oracle_enabled: { type: 'boolean' },
+      pow_enabled: { type: 'boolean' },
+      pow_difficulty: { type: 'integer', minimum: 0, maximum: 32 },
+      welcome_required: { type: 'boolean' },
+      invite_required: { type: 'boolean' },
+      invite_prefixes: {
+        type: 'array',
+        minItems: 0,
+        maxItems: 25,
+        items: { type: 'string', minLength: 1, maxLength: 64, pattern: '^[^\\s]+$' },
+      },
+      log_path: { type: 'string', minLength: 1, maxLength: 400, description: 'Optional log path (must be under onchain/).' },
+      ready_timeout_ms: { type: 'integer', minimum: 0, maximum: 120000, description: 'Wait for SC-Bridge port to open (default 15000ms).' },
+    },
+    required: ['name', 'store', 'sc_port'],
+  }),
+  tool('intercomswap_peer_stop', 'Stop a local peer instance (by instance name).', {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      name: { type: 'string', minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9._-]+$' },
+      signal: { type: 'string', minLength: 3, maxLength: 10, description: 'SIGTERM|SIGINT|SIGKILL (default SIGTERM)' },
+      wait_ms: { type: 'integer', minimum: 0, maximum: 120000, description: 'Wait time before SIGKILL fallback (default 2000ms).' },
+    },
+    required: ['name'],
+  }),
+  tool('intercomswap_peer_restart', 'Restart a local peer instance (stop then start using last config).', {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      name: { type: 'string', minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9._-]+$' },
+      wait_ms: { type: 'integer', minimum: 0, maximum: 120000, description: 'Wait time before SIGKILL fallback (default 2000ms).' },
+      ready_timeout_ms: { type: 'integer', minimum: 0, maximum: 120000, description: 'Wait for SC-Bridge port to open (default 15000ms).' },
+    },
+    required: ['name'],
+  }),
+
   // RFQ / swap envelope helpers (Phase 5B executor will translate to swapctl+sign safely).
   tool('intercomswap_rfq_post', 'Post a signed RFQ envelope into an RFQ rendezvous channel.', {
     type: 'object',

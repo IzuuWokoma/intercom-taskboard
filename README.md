@@ -143,6 +143,7 @@ After installation, day-to-day operation should be done by invoking scripts (mac
 | Bootstrap | `scripts/bootstrap.sh` | n/a | bash | Install Pear runtime + deps |
 | Start peer (maker/service) | `scripts/run-swap-maker.sh` | `scripts/run-swap-maker.ps1` | shell | Start a peer with SC-Bridge + price oracle and join an RFQ channel |
 | Start peer (taker/client) | `scripts/run-swap-taker.sh` | `scripts/run-swap-taker.ps1` | shell | Start a peer with SC-Bridge + price oracle and join an RFQ channel; pins `SWAP_INVITER_KEYS` for `swap:*` |
+| Peer lifecycle supervisor | `scripts/peermgr.sh` | `scripts/peermgr.ps1` | `scripts/peermgr.mjs` | Start/stop/restart background peers (headless) without keeping a terminal open |
 | SC-Bridge control | `scripts/swapctl.sh` | `scripts/swapctl.ps1` | `scripts/swapctl.mjs` | Sidechannel ops + signed message helpers |
 | SC-Bridge control (token auto) | `scripts/swapctl-peer.sh` | `scripts/swapctl-peer.ps1` | wrapper | Same as `swapctl`, but reads token from `onchain/sc-bridge/<store>.token` |
 | RFQ maker bot | `scripts/rfq-maker-peer.sh` | `scripts/rfq-maker-peer.ps1` | `scripts/rfq-maker.mjs` | Quote RFQs; optionally run full swap state machine |
@@ -171,6 +172,26 @@ Notes:
 | Token files | Created under `onchain/sc-bridge/<storeName>.token` (gitignored). |
 | RFQ channel | Any channel works. Use a dedicated rendezvous like `0000intercomswapbtcusdt` for trading, and keep `0000intercom` for service presence only. |
 | Subnet channel | Keep `--subnet-channel` consistent across peers (mismatches can prevent connections). |
+
+---
+
+### Peer Lifecycle Supervisor (`peermgr`)
+
+`peermgr` is a local supervisor for starting/stopping `pear run` peers in the background (so you don’t need to keep a terminal open).
+
+Notes:
+- It enforces: **never run the same peer store twice**.
+- It stores state + logs under `onchain/peers/` (gitignored).
+- It always starts the peer in **headless mode** (`--terminal 0`).
+
+#### Commands
+
+| Command | What it does |
+|---|---|
+| `scripts/peermgr.sh start --name <id> --store <peerStoreName> --sc-port <n> --sidechannels <csv>` | Start a peer and join one or more extra sidechannels on startup |
+| `scripts/peermgr.sh stop --name <id>` | Stop the peer process |
+| `scripts/peermgr.sh restart --name <id>` | Restart using the last saved config |
+| `scripts/peermgr.sh status [--name <id>]` | Show state + PID + liveness |
 
 ---
 
@@ -601,15 +622,30 @@ Start the service:
 ./scripts/promptd.sh --config onchain/prompt/setup.json
 ```
 
+Optional server hardening (recommended if you expose `promptd` beyond localhost, e.g. via ngrok):
+- `server.auth_token`: requires `Authorization: Bearer <token>` on all `/v1/*` endpoints
+- `server.tls`: serve HTTPS instead of HTTP (provide `key` + `cert` paths under `onchain/`)
+
 Run prompts:
 ```bash
 ./scripts/promptctl.sh --prompt "Show SC-Bridge info"
 ./scripts/promptctl.sh --auto-approve 1 --prompt "Post an RFQ in 0000intercomswapbtcusdt"
 ```
 
+If `server.auth_token` is set, add `--auth-token`:
+```bash
+./scripts/promptctl.sh --auth-token "<token>" --prompt "Show SC-Bridge info"
+```
+
 ### Secret Handles (No Leaks To The Model)
 
 Some tool outputs are sensitive (LN preimages, swap invites/welcomes). `promptd` will replace these values with `secret:<id>` handles before sending tool results back to the model. Later tool calls can pass those handles back, and the executor will resolve them server-side.
+
+### Streaming Endpoints (For UI)
+
+`promptd` also exposes NDJSON streaming endpoints for memory-safe UIs:
+- `POST /v1/run/stream` (stream prompt execution events)
+- `GET /v1/sc/stream` (stream sidechannel events received via SC-Bridge)
 
 ---
 

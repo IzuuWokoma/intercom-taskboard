@@ -76,6 +76,16 @@ const msbEnabledRaw =
   '';
 const msbEnabled = parseBool(msbEnabledRaw, true);
 
+// Terminal UI (interactive) is enabled by default. For daemon/supervisor mode (peermgr/promptd),
+// disable it so the process does not exit when stdin is closed.
+const terminalEnabledRaw =
+  (flags['terminal'] && String(flags['terminal'])) ||
+  (flags['enable-terminal'] && String(flags['enable-terminal'])) ||
+  env.TERMINAL_ENABLED ||
+  env.TERMINAL ||
+  '';
+const terminalEnabled = parseBool(terminalEnabledRaw, true);
+
 const parseKeyValueList = (raw) => {
   if (!raw) return [];
   return String(raw)
@@ -470,7 +480,7 @@ const msbConfig = createMsbConfig(MSB_ENV.MAINNET, {
   storeName: msbStoreName,
   storesDirectory: msbStoresDirectory,
   enableInteractiveMode: false,
-  dhtBootstrap: msbDhtBootstrap || undefined,
+  ...(Array.isArray(msbDhtBootstrap) ? { dhtBootstrap: msbDhtBootstrap } : {}),
 });
 
 const msbBootstrapHex = b4a.toString(msbConfig.bootstrap, 'hex');
@@ -487,7 +497,7 @@ const peerConfig = createPeerConfig(PEER_ENV.MAINNET, {
   enableBackgroundTasks: true,
   enableUpdater: true,
   replicate: true,
-  dhtBootstrap: peerDhtBootstrap || undefined,
+  ...(Array.isArray(peerDhtBootstrap) ? { dhtBootstrap: peerDhtBootstrap } : {}),
 });
 
 const ensureKeypairFile = async (keyPairPath) => {
@@ -699,5 +709,13 @@ sidechannel
     console.error('Sidechannel failed to start:', err?.message ?? err);
   });
 
-const terminal = new Terminal(peer);
-await terminal.start();
+if (terminalEnabled) {
+  const terminal = new Terminal(peer);
+  await terminal.start();
+} else {
+  console.log('Terminal: disabled (--terminal 0)');
+  // Keep the process alive even if underlying sockets/timers have been unref'ed by deps/runtime.
+  // This is required for supervisor/daemon mode (peermgr/promptd).
+  const keepAlive = setInterval(() => {}, 1 << 30);
+  if (keepAlive && typeof keepAlive.ref === 'function') keepAlive.ref();
+}

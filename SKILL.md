@@ -164,6 +164,12 @@ For tool-call friendly lifecycle control (start/stop/restart specific bot instan
 - `scripts/rfqbotmgr.mjs` (wrappers: `scripts/rfqbotmgr.sh`, `scripts/rfqbotmgr.ps1`)
   - stores state + logs under `onchain/rfq-bots/` (gitignored)
 
+For peer lifecycle control (start/stop/restart **peers** without keeping a terminal open), use:
+- `scripts/peermgr.mjs` (wrappers: `scripts/peermgr.sh`, `scripts/peermgr.ps1`)
+  - stores state + logs under `onchain/peers/` (gitignored)
+  - enforces: **never run the same peer store twice**
+  - starts peers headless (`--terminal 0`)
+
 To avoid copy/pasting SC-Bridge URLs/tokens, use the wrappers that read the token from `onchain/sc-bridge/<store>.token`:
 - `scripts/swapctl-peer.sh <storeName> <scBridgePort> ...`
 - `scripts/swapctl-peer.ps1 <storeName> <scBridgePort> ...`
@@ -207,6 +213,11 @@ Run prompts with `promptctl`:
 ./scripts/promptctl.sh --dry-run 1 --auto-approve 0 --prompt "Post an RFQ in 0000intercomswapbtcusdt"
 ```
 
+If you set `server.auth_token`, add `--auth-token`:
+```bash
+./scripts/promptctl.sh --auth-token "<token>" --prompt "Show SC-Bridge info"
+```
+
 ### Secret Handles (No Leaks To The Model)
 Tool outputs may contain sensitive material (LN preimages, swap invites/welcomes). `promptd` will:
 - store those values server-side in the current session
@@ -214,6 +225,11 @@ Tool outputs may contain sensitive material (LN preimages, swap invites/welcomes
 - allow later tool calls to pass those handles back (the executor resolves them)
 
 If `promptd` restarts (or you lose the session), secret handles become invalid. For real ops, always enable receipts (`receipts.db`) so recovery tooling can be used.
+
+### Streaming (For UI)
+`promptd` exposes NDJSON streaming endpoints for memory-safe UIs:
+- `POST /v1/run/stream`
+- `GET /v1/sc/stream`
 
 ## Quick Start (Clone + Run)
 Use Pear runtime only (never native node).

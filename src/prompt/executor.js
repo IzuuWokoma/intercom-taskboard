@@ -998,6 +998,153 @@ export class ToolExecutor {
       return withScBridge(this.scBridge, (sc) => sc.join(swapChannel, { invite, welcome }));
     }
 
+    // Peer manager (local pear run processes; does not grant shell access)
+    if (toolName === 'intercomswap_peer_status') {
+      assertAllowedKeys(args, toolName, ['name']);
+      const name = expectOptionalString(args, toolName, 'name', { min: 1, max: 64, pattern: /^[A-Za-z0-9._-]+$/ });
+      const { peerStatus } = await import('../peer/peerManager.js');
+      return peerStatus({ repoRoot: process.cwd(), name: name || '' });
+    }
+
+    if (toolName === 'intercomswap_peer_start') {
+      assertAllowedKeys(args, toolName, [
+        'name',
+        'store',
+        'sc_port',
+        'sidechannels',
+        'inviter_keys',
+        'dht_bootstrap',
+        'msb_dht_bootstrap',
+        'subnet_channel',
+        'msb_enabled',
+        'price_oracle_enabled',
+        'pow_enabled',
+        'pow_difficulty',
+        'welcome_required',
+        'invite_required',
+        'invite_prefixes',
+        'log_path',
+        'ready_timeout_ms',
+      ]);
+      requireApproval(toolName, autoApprove);
+      const name = expectString(args, toolName, 'name', { min: 1, max: 64, pattern: /^[A-Za-z0-9._-]+$/ });
+      const store = expectString(args, toolName, 'store', { min: 1, max: 64, pattern: /^[A-Za-z0-9._-]+$/ });
+      const scPort = expectInt(args, toolName, 'sc_port', { min: 1, max: 65535 });
+
+      const sidechannels = Array.isArray(args.sidechannels) ? args.sidechannels.map(normalizeChannelName) : [];
+      if (sidechannels.length > 50) throw new Error(`${toolName}: sidechannels too long`);
+
+      const inviterKeys = Array.isArray(args.inviter_keys) ? args.inviter_keys.map((v) => normalizeHex32(v, 'inviter_keys')) : [];
+      if (inviterKeys.length > 25) throw new Error(`${toolName}: inviter_keys too long`);
+
+      const parseBoot = (value, label) => {
+        if (!Array.isArray(value)) return [];
+        const out = [];
+        for (const entry of value) {
+          const s = String(entry || '').trim();
+          if (!s) continue;
+          if (s.length > 200) throw new Error(`${toolName}: ${label} entry too long`);
+          if (/\s|\r|\n/.test(s)) throw new Error(`${toolName}: ${label} must not contain whitespace/newlines`);
+          out.push(s);
+        }
+        return out;
+      };
+      const dhtBootstrap = parseBoot(args.dht_bootstrap, 'dht_bootstrap');
+      const msbDhtBootstrap = parseBoot(args.msb_dht_bootstrap, 'msb_dht_bootstrap');
+
+      const subnetChannel = expectOptionalString(args, toolName, 'subnet_channel', { min: 1, max: 200, pattern: /^[^\s]+$/ }) || '';
+
+      const msbEnabled = 'msb_enabled' in args ? expectBool(args, toolName, 'msb_enabled') : false;
+      const priceOracleEnabled = 'price_oracle_enabled' in args ? expectBool(args, toolName, 'price_oracle_enabled') : false;
+      const powEnabled = 'pow_enabled' in args ? expectBool(args, toolName, 'pow_enabled') : true;
+      const powDifficulty = expectOptionalInt(args, toolName, 'pow_difficulty', { min: 0, max: 32 });
+      const welcomeRequired = 'welcome_required' in args ? expectBool(args, toolName, 'welcome_required') : false;
+      const inviteRequired = 'invite_required' in args ? expectBool(args, toolName, 'invite_required') : true;
+
+      const invitePrefixes = Array.isArray(args.invite_prefixes)
+        ? args.invite_prefixes.map((v) => String(v || '').trim()).filter(Boolean)
+        : ['swap:'];
+      if (invitePrefixes.length > 25) throw new Error(`${toolName}: invite_prefixes too long`);
+      for (const p of invitePrefixes) {
+        if (p.length > 64) throw new Error(`${toolName}: invite_prefixes entry too long`);
+        if (/\s|\r|\n/.test(p)) throw new Error(`${toolName}: invite_prefixes must not contain whitespace/newlines`);
+      }
+
+      const logPathArg = expectOptionalString(args, toolName, 'log_path', { min: 1, max: 400 });
+      const logPath = logPathArg ? resolveOnchainPath(logPathArg, { label: 'log_path' }) : '';
+
+      const readyTimeoutMs = expectOptionalInt(args, toolName, 'ready_timeout_ms', { min: 0, max: 120_000 }) ?? 15_000;
+
+      if (dryRun) {
+        return {
+          type: 'dry_run',
+          tool: toolName,
+          name,
+          store,
+          sc_port: scPort,
+          sidechannels,
+          inviter_keys: inviterKeys,
+          dht_bootstrap: dhtBootstrap,
+          msb_dht_bootstrap: msbDhtBootstrap,
+          subnet_channel: subnetChannel || null,
+          msb_enabled: msbEnabled,
+          price_oracle_enabled: priceOracleEnabled,
+          pow_enabled: powEnabled,
+          pow_difficulty: powDifficulty ?? null,
+          welcome_required: welcomeRequired,
+          invite_required: inviteRequired,
+          invite_prefixes: invitePrefixes,
+          log_path: logPath || null,
+          ready_timeout_ms: readyTimeoutMs,
+        };
+      }
+
+      const { peerStart } = await import('../peer/peerManager.js');
+      return peerStart({
+        repoRoot: process.cwd(),
+        name,
+        store,
+        scPort,
+        sidechannels,
+        sidechannelInviterKeys: inviterKeys,
+        dhtBootstrap,
+        msbDhtBootstrap,
+        subnetChannel,
+        msbEnabled,
+        priceOracleEnabled,
+        sidechannelPowEnabled: powEnabled,
+        sidechannelPowDifficulty: powDifficulty ?? 12,
+        sidechannelWelcomeRequired: welcomeRequired,
+        sidechannelInviteRequired: inviteRequired,
+        sidechannelInvitePrefixes: invitePrefixes,
+        logPath,
+        readyTimeoutMs,
+      });
+    }
+
+    if (toolName === 'intercomswap_peer_stop') {
+      assertAllowedKeys(args, toolName, ['name', 'signal', 'wait_ms']);
+      requireApproval(toolName, autoApprove);
+      const name = expectString(args, toolName, 'name', { min: 1, max: 64, pattern: /^[A-Za-z0-9._-]+$/ });
+      const signal = expectOptionalString(args, toolName, 'signal', { min: 3, max: 10 }) || 'SIGTERM';
+      if (!['SIGTERM', 'SIGINT', 'SIGKILL'].includes(signal)) throw new Error(`${toolName}: invalid signal`);
+      const waitMs = expectOptionalInt(args, toolName, 'wait_ms', { min: 0, max: 120_000 }) ?? 2000;
+      if (dryRun) return { type: 'dry_run', tool: toolName, name, signal, wait_ms: waitMs };
+      const { peerStop } = await import('../peer/peerManager.js');
+      return peerStop({ repoRoot: process.cwd(), name, signal, waitMs });
+    }
+
+    if (toolName === 'intercomswap_peer_restart') {
+      assertAllowedKeys(args, toolName, ['name', 'wait_ms', 'ready_timeout_ms']);
+      requireApproval(toolName, autoApprove);
+      const name = expectString(args, toolName, 'name', { min: 1, max: 64, pattern: /^[A-Za-z0-9._-]+$/ });
+      const waitMs = expectOptionalInt(args, toolName, 'wait_ms', { min: 0, max: 120_000 }) ?? 2000;
+      const readyTimeoutMs = expectOptionalInt(args, toolName, 'ready_timeout_ms', { min: 0, max: 120_000 }) ?? 15_000;
+      if (dryRun) return { type: 'dry_run', tool: toolName, name, wait_ms: waitMs, ready_timeout_ms: readyTimeoutMs };
+      const { peerRestart } = await import('../peer/peerManager.js');
+      return peerRestart({ repoRoot: process.cwd(), name, waitMs, readyTimeoutMs });
+    }
+
     // RFQ bot manager (local processes; does not stop the peer)
     if (toolName === 'intercomswap_rfqbot_status') {
       assertAllowedKeys(args, toolName, ['name']);
