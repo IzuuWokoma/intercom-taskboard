@@ -649,6 +649,35 @@ Some tool outputs are sensitive (LN preimages, swap invites/welcomes). `promptd`
 - `POST /v1/run/stream` (stream prompt execution events)
 - `GET /v1/sc/stream` (stream sidechannel events received via SC-Bridge)
 
+### Collin UI (Local Control Center)
+
+This repo includes **Collin**, a local-first control center UI (prompting is only one part of it).
+
+- Source: `ui/collin/`
+- Served by: `promptd` (same origin as `/v1/*`, no CORS issues)
+- UI feeds are **virtualized** and use **backscroll paging** to keep the DOM/memory stable.
+
+Build the UI:
+```bash
+cd ui/collin
+npm install
+npm run build
+```
+
+Run the UI (via `promptd`):
+```bash
+./scripts/promptd.sh --config onchain/prompt/setup.json
+```
+
+Open:
+- `http://127.0.0.1:9333/`
+
+Dev mode (HMR) with a built-in proxy for `/v1` and `/healthz`:
+```bash
+cd ui/collin
+npm run dev
+```
+
 ---
 
 ## Tests (Mandatory)

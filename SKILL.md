@@ -231,6 +231,34 @@ If `promptd` restarts (or you lose the session), secret handles become invalid. 
 - `POST /v1/run/stream`
 - `GET /v1/sc/stream`
 
+### Collin UI (Control Center)
+
+This repo includes **Collin**, a local-first control center UI (prompting is only one part of it).
+
+- Source: `ui/collin/`
+- Served by: `promptd` (same origin as `/v1/*`, avoids CORS issues)
+
+Build the UI:
+```bash
+cd ui/collin
+npm install
+npm run build
+```
+
+Run `promptd` and open the UI:
+```bash
+./scripts/promptd.sh --config onchain/prompt/setup.json
+```
+
+Open:
+- `http://127.0.0.1:9333/`
+
+Dev mode (HMR) with a built-in proxy for `/v1` and `/healthz`:
+```bash
+cd ui/collin
+npm run dev
+```
+
 ## Quick Start (Clone + Run)
 Use Pear runtime only (never native node).
 

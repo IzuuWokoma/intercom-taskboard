@@ -1,6 +1,9 @@
 .nvmrc
 stores
 node_modules
+ui/**/node_modules
+ui/**/dist
+ui/**/dist-ssr
 
 # IDE / OS noise
 .idea/

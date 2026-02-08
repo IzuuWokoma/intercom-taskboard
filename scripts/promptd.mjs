@@ -106,6 +106,51 @@ function ndjsonHeaders(res, status = 200) {
   });
 }
 
+function staticHeaders(res, status, { contentType, contentLength }) {
+  res.writeHead(status, {
+    'content-type': contentType,
+    'content-length': contentLength,
+    'cache-control': 'no-cache',
+  });
+}
+
+function contentTypeForFile(p) {
+  const ext = String(path.extname(p) || '').toLowerCase();
+  switch (ext) {
+    case '.html':
+      return 'text/html; charset=utf-8';
+    case '.css':
+      return 'text/css; charset=utf-8';
+    case '.js':
+      return 'application/javascript; charset=utf-8';
+    case '.map':
+      return 'application/json; charset=utf-8';
+    case '.svg':
+      return 'image/svg+xml; charset=utf-8';
+    case '.png':
+      return 'image/png';
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.ico':
+      return 'image/x-icon';
+    case '.txt':
+      return 'text/plain; charset=utf-8';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
+function safeJoin(root, requestPath) {
+  const rel = String(requestPath || '')
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '');
+  // Prevent path traversal by resolving and verifying prefix.
+  const abs = path.resolve(root, rel);
+  const ok = abs === root || abs.startsWith(root + path.sep);
+  return ok ? abs : null;
+}
+
 async function writeNdjson(res, obj) {
   const line = `${JSON.stringify(obj)}\n`;
   const ok = res.write(line);
@@ -218,6 +263,11 @@ async function main() {
 
   const configPath = flags.get('config') ? String(flags.get('config')).trim() : DEFAULT_PROMPT_SETUP_PATH;
   const setup = loadPromptSetupFromFile({ configPath, cwd: repoRoot });
+
+  // Collin UI (built assets). Optional: if dist is missing, promptd still runs as an API server.
+  const uiDir = path.resolve(repoRoot, 'ui', 'collin', 'dist');
+  const uiIndex = path.join(uiDir, 'index.html');
+  const uiEnabled = fs.existsSync(uiIndex);
 
   const executor = new ToolExecutor({
     scBridge: setup.scBridge,
@@ -367,6 +417,17 @@ async function main() {
             cursor = Math.max(cursor, e.seq);
           }
         }
+        return;
+      }
+
+      // Collin UI (single-page app). Serve only for GET requests outside /v1.
+      if (uiEnabled && method === 'GET' && !url.startsWith('/v1/') && url !== '/healthz') {
+        // If request is for an asset that exists, serve it. Otherwise fall back to index.html.
+        const want = safeJoin(uiDir, url);
+        const candidate = want && fs.existsSync(want) && fs.statSync(want).isFile() ? want : uiIndex;
+        const data = fs.readFileSync(candidate);
+        staticHeaders(res, 200, { contentType: contentTypeForFile(candidate), contentLength: data.length });
+        res.end(data);
         return;
       }
 
