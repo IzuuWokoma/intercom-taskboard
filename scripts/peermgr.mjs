@@ -65,7 +65,7 @@ function maybeFlag(flags, name, fallback = '') {
   return String(v);
 }
 
-function maybeInt(flags, name, fallback = null) {
+function maybeInt(flags, name, fallback = undefined) {
   const v = flags.get(name);
   if (v === undefined || v === null || v === true) return fallback;
   const n = Number.parseInt(String(v), 10);
@@ -73,7 +73,7 @@ function maybeInt(flags, name, fallback = null) {
   return n;
 }
 
-function maybeBool(flags, name, fallback = null) {
+function maybeBool(flags, name, fallback = undefined) {
   const v = flags.get(name);
   if (v === undefined || v === null || v === true) return fallback;
   const s = String(v).trim().toLowerCase();
@@ -156,4 +156,3 @@ async function main() {
 }
 
 main().catch((err) => die(err?.stack || err?.message || String(err)));
-
