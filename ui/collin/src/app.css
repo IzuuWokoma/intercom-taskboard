@@ -206,6 +206,7 @@
   flex-direction: column;
   padding: 8px;
   gap: 6px;
+  overflow: auto;
 }
 .navbtn {
   display: flex;
@@ -295,6 +296,8 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .row {
@@ -510,11 +513,12 @@
 }
 .promptbody {
   padding: 12px;
-  display: grid;
-  grid-template-columns: 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 .toolrun,
 .llmrun {
@@ -522,6 +526,8 @@
   flex-direction: column;
   gap: 10px;
   min-height: 0;
+  overflow: auto;
+  flex: 1 1 0;
 }
 
 .seg {
@@ -603,6 +609,8 @@
   flex-direction: column;
   gap: 10px;
   min-height: 0;
+  overflow: hidden;
+  flex: 1 1 0;
 }
 
 .details summary {

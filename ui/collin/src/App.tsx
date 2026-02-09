@@ -908,22 +908,34 @@ function App() {
     if (!scFollowTail) return;
     const el = scListRef.current;
     if (!el) return;
-    // scroll to bottom when new events appended
-    el.scrollTop = el.scrollHeight;
+    // Scroll to bottom when new events append. Use rAF so virtualization has laid out.
+    requestAnimationFrame(() => {
+      try {
+        el.scrollTop = el.scrollHeight;
+      } catch (_e) {}
+    });
   }, [scEvents, scFollowTail]);
 
   useEffect(() => {
     if (!promptFollowTail) return;
     const el = promptListRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => {
+      try {
+        el.scrollTop = el.scrollHeight;
+      } catch (_e) {}
+    });
   }, [promptEvents, promptFollowTail]);
 
   useEffect(() => {
     if (!consoleFollowTail) return;
     const el = consoleListRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => {
+      try {
+        el.scrollTop = el.scrollHeight;
+      } catch (_e) {}
+    });
   }, [consoleEvents, consoleFollowTail]);
 
   const onScScroll = () => {
