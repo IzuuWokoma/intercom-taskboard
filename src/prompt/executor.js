@@ -6025,10 +6025,13 @@ export class ToolExecutor {
 
     if (toolName === 'intercomswap_swap_verify_pre_pay') {
       assertAllowedKeys(args, toolName, ['terms_envelope', 'invoice_envelope', 'escrow_envelope', 'now_unix']);
-      const nowUnix =
+      // Safety: do not allow callers to bypass time-bound guardrails by passing a past now_unix.
+      const nowActual = Math.floor(Date.now() / 1000);
+      const nowProvided =
         'now_unix' in args && args.now_unix !== null && args.now_unix !== undefined
           ? expectInt(args, toolName, 'now_unix', { min: 1 })
-          : Math.floor(Date.now() / 1000);
+          : null;
+      const nowUnix = nowProvided !== null ? Math.max(nowActual, nowProvided) : nowActual;
 
       const terms = resolveSecretArg(secrets, args.terms_envelope, { label: 'terms_envelope', expectType: 'object' });
       const invoice = resolveSecretArg(secrets, args.invoice_envelope, { label: 'invoice_envelope', expectType: 'object' });
@@ -6293,10 +6296,13 @@ export class ToolExecutor {
       assertAllowedKeys(args, toolName, ['channel', 'terms_envelope', 'invoice_envelope', 'escrow_envelope', 'now_unix']);
       requireApproval(toolName, autoApprove);
       const channel = normalizeChannelName(expectString(args, toolName, 'channel', { max: 128 }));
-      const nowUnix =
+      // Safety: do not allow callers to bypass time-bound guardrails by passing a past now_unix.
+      const nowActual = Math.floor(Date.now() / 1000);
+      const nowProvided =
         'now_unix' in args && args.now_unix !== null && args.now_unix !== undefined
           ? expectInt(args, toolName, 'now_unix', { min: 1 })
-          : Math.floor(Date.now() / 1000);
+          : null;
+      const nowUnix = nowProvided !== null ? Math.max(nowActual, nowProvided) : nowActual;
 
       const terms = resolveSecretArg(secrets, args.terms_envelope, { label: 'terms_envelope', expectType: 'object' });
       const invoice = resolveSecretArg(secrets, args.invoice_envelope, { label: 'invoice_envelope', expectType: 'object' });
