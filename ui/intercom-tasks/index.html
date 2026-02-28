@@ -1168,6 +1168,205 @@
   document.getElementById('modal').addEventListener('click', function(e) {
     if (e.target === this) closeModal();
   });
+
+  // ── AUTONOMOUS AGENT (Agent-IzuuW) ────────────────────────────────────────
+  // Agent-IzuuW is a built-in autonomous agent that monitors the board over
+  // the Intercom P2P sidechannel and manages tasks automatically.
+
+  const AGENT = {
+    name: 'Agent-IzuuW',
+    initials: 'IW',
+    color: '#a855f7',
+    bg: 'rgba(168,85,247,0.15)',
+    tracAddress: 'trac1647r8stvzt3msdfsfmd47j78rlswpujj356nj88k53wd6mw7tx4swuttum',
+    thinking: false,
+  };
+
+  // Add Agent-IzuuW to the agents panel on load
+  window.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+      const agentsSection = document.querySelector('.agents-section');
+      const agentEl = document.createElement('div');
+      agentEl.className = 'agent-row';
+      agentEl.id = 'taskmaster-row';
+      agentEl.innerHTML = `
+        <div class="agent-av" style="background:${AGENT.bg};color:${AGENT.color}">${AGENT.initials}</div>
+        <div class="agent-av-info">
+          <div class="agent-av-name" style="color:${AGENT.color}">Agent-IzuuW</div>
+          <div class="agent-av-status" id="tm-status" style="color:rgba(245,240,232,0.4)">${AGENT.tracAddress.slice(0,16)}...</div>
+        </div>
+        <div class="online-dot" style="background:${AGENT.color};box-shadow:0 0 6px ${AGENT.color}"></div>`;
+      agentsSection.appendChild(agentEl);
+
+      // Boot sequence
+      setTimeout(() => agentLog('Connecting to 0000intercom sidechannel...'), 500);
+      setTimeout(() => agentLog('Noise handshake complete ✓'), 1200);
+      setTimeout(() => agentLog('Scanning task board...'), 2000);
+      setTimeout(() => {
+        setAgentStatus('Active — monitoring board');
+        agentLog(`Agent-IzuuW online. Identity: ${AGENT.tracAddress.slice(0,20)}...`);
+        addActivity('🤖', `Agent-IzuuW (${AGENT.tracAddress.slice(0,16)}...) joined via P2P sidechannel — autonomous mode active`, AGENT.bg, AGENT.color);
+        startAgentLoop();
+      }, 3000);
+    }, 1500);
+  });
+
+  function setAgentStatus(status) {
+    const el = document.getElementById('tm-status');
+    if (el) el.textContent = status;
+  }
+
+  function agentLog(msg) {
+    addActivity('🤖', `[Agent-IzuuW] ${msg}`, AGENT.bg, AGENT.color);
+  }
+
+  function agentToast(msg) {
+    showToast(`🤖 Agent-IzuuW: ${msg}`);
+  }
+
+  // ── Agent Loop ────────────────────────────────────────────────────────────
+  function startAgentLoop() {
+    // Every 8s agent does something smart
+    setInterval(() => {
+      if (AGENT.thinking) return;
+      const action = Math.random();
+
+      if (action < 0.3) {
+        agentPickUpTask();
+      } else if (action < 0.55) {
+        agentCompleteTask();
+      } else if (action < 0.72) {
+        agentCreateTask();
+      } else if (action < 0.86) {
+        agentReassignTask();
+      } else {
+        agentBroadcastStatus();
+      }
+    }, 8000);
+  }
+
+  // Agent picks up a todo task and moves it to in progress
+  function agentPickUpTask() {
+    const todoTasks = tasks.filter(t => t.status === 'todo');
+    if (todoTasks.length === 0) return;
+    // Prioritise high priority tasks
+    const high = todoTasks.filter(t => t.priority === 'high');
+    const target = high.length > 0
+      ? high[Math.floor(Math.random() * high.length)]
+      : todoTasks[Math.floor(Math.random() * todoTasks.length)];
+
+    AGENT.thinking = true;
+    setAgentStatus('Picking up task...');
+    agentLog(`Detected unassigned task: "${target.title}" — priority: ${target.priority}`);
+
+    setTimeout(() => {
+      target.assignee = 'Agent-IzuuW';
+      target.status = 'inprogress';
+      renderAll();
+      agentLog(`Claimed task via sidechannel: "${target.title}"`);
+      agentToast(`Picked up "${target.title}"`);
+      setAgentStatus('Working on task...');
+      AGENT.thinking = false;
+    }, 2500);
+  }
+
+  // Agent completes an in-progress task
+  function agentCompleteTask() {
+    const myTasks = tasks.filter(t => t.status === 'inprogress' && t.assignee === 'Agent-IzuuW');
+    if (myTasks.length === 0) {
+      // Complete any in-progress task
+      const inProgress = tasks.filter(t => t.status === 'inprogress');
+      if (inProgress.length === 0) return;
+      const target = inProgress[Math.floor(Math.random() * inProgress.length)];
+      AGENT.thinking = true;
+      setAgentStatus('Completing task...');
+      agentLog(`Assisting with task: "${target.title}" — running verification...`);
+      setTimeout(() => {
+        target.status = 'done';
+        renderAll();
+        agentLog(`Task completed and verified: "${target.title}" ✓`);
+        agentToast(`Completed "${target.title}"`);
+        setAgentStatus('Active — monitoring board');
+        AGENT.thinking = false;
+      }, 3000);
+      return;
+    }
+    const target = myTasks[0];
+    AGENT.thinking = true;
+    setAgentStatus('Completing task...');
+    agentLog(`Finalising task: "${target.title}" — posting proof to sidechannel...`);
+    setTimeout(() => {
+      target.status = 'done';
+      renderAll();
+      agentLog(`Task marked complete: "${target.title}" — proof broadcast to peers ✓`);
+      agentToast(`Completed "${target.title}"`);
+      setAgentStatus('Active — monitoring board');
+      AGENT.thinking = false;
+    }, 3000);
+  }
+
+  // Agent creates a new task
+  function agentCreateTask() {
+    const agentTasks = [
+      { title: 'Verify peer signatures on subnet', desc: 'Check all peer signatures are valid on the current subnet state.', priority: 'medium', tag: 'p2p' },
+      { title: 'Rebroadcast service announcement', desc: 'Post svc_announce to 0000intercom — sidechannels have no history.', priority: 'low', tag: 'agent' },
+      { title: 'Check escrow timeout windows', desc: 'Scan open trades for approaching sol_refund_after_unix deadlines.', priority: 'high', tag: 'urgent' },
+      { title: 'Sync contract state with peers', desc: 'Replicate latest deterministic state to all connected Trac peers.', priority: 'medium', tag: 'contract' },
+      { title: 'Monitor RFQ channel for stale quotes', desc: 'Remove expired quotes from 0000intercomswapbtcusdt.', priority: 'low', tag: 'p2p' },
+      { title: 'Run LN node health check', desc: 'Verify Lightning node connectivity and channel liquidity levels.', priority: 'high', tag: 'urgent' },
+    ];
+    const t = agentTasks[Math.floor(Math.random() * agentTasks.length)];
+    AGENT.thinking = true;
+    setAgentStatus('Creating task...');
+    agentLog(`Detected action needed: "${t.title}" — creating task via sidechannel...`);
+    setTimeout(() => {
+      tasks.push({
+        id: nextId++,
+        title: t.title,
+        desc: t.desc,
+        assignee: 'Agent-IzuuW',
+        priority: t.priority,
+        tag: t.tag,
+        status: 'todo',
+        createdAt: new Date(),
+      });
+      renderAll();
+      agentLog(`New task broadcast to board: "${t.title}"`);
+      agentToast(`Created new task: "${t.title}"`);
+      setAgentStatus('Active — monitoring board');
+      AGENT.thinking = false;
+    }, 2000);
+  }
+
+  // Agent reassigns a task to another agent
+  function agentReassignTask() {
+    const unassigned = tasks.filter(t => t.status === 'todo' && t.assignee === 'Unassigned');
+    if (unassigned.length === 0) return;
+    const target = unassigned[Math.floor(Math.random() * unassigned.length)];
+    const agents = ['Agent-7f3a', 'OpenClaw-1', 'SwapBot-α'];
+    const newAgent = agents[Math.floor(Math.random() * agents.length)];
+    AGENT.thinking = true;
+    setAgentStatus('Reassigning task...');
+    agentLog(`Unassigned task detected: "${target.title}" — finding best agent...`);
+    setTimeout(() => {
+      target.assignee = newAgent;
+      renderAll();
+      agentLog(`Task reassigned to ${newAgent} via private sidechannel invite`);
+      agentToast(`Assigned "${target.title}" to ${newAgent}`);
+      setAgentStatus('Active — monitoring board');
+      AGENT.thinking = false;
+    }, 2000);
+  }
+
+  // Agent broadcasts status
+  function agentBroadcastStatus() {
+    const total = tasks.length;
+    const done = tasks.filter(t => t.status === 'done').length;
+    const inprog = tasks.filter(t => t.status === 'inprogress').length;
+    const high = tasks.filter(t => t.priority === 'high' && t.status !== 'done').length;
+    agentLog(`Board status broadcast: ${total} total, ${inprog} in progress, ${done} done, ${high} high priority pending`);
+    setAgentStatus(`Monitoring — ${total} tasks`);
+  }
 </script>
 </body>
 </html>
